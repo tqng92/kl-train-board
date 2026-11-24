@@ -3,203 +3,135 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Merdeka / Plaza Rakyat — Train Times</title>
+<title>KL Train Board</title>
 <style>
   :root {
-    --bg: #0b0f14;
-    --card: #141b24;
-    --card2: #1a232e;
-    --text: #e8edf2;
-    --muted: #8fa0b3;
-    --dim: #5c6c7d;
-    --kgl: #047940;
-    --spl: #a04b3c;
-    --agl: #e57200;
+    --bg: #0b0f14; --card: #141b24; --card2: #1a232e;
+    --text: #e8edf2; --muted: #8fa0b3; --dim: #5c6c7d; --accent: #35d07f;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    min-height: 100vh;
-    padding-bottom: 90px;
+    min-height: 100vh; padding-bottom: 92px;
   }
-  header {
-    padding: 28px 20px 18px;
-    text-align: center;
-  }
-  header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
-  header p { color: var(--muted); font-size: 13px; margin-top: 6px; }
-  .live-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    background: #35d07f; margin-right: 6px; vertical-align: 1px;
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse { 0%,100% {opacity:1} 50% {opacity:.35} }
+  header { padding: 22px 16px 12px; text-align: center; }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+  header p { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
-  .station { max-width: 640px; margin: 0 auto 26px; padding: 0 14px; }
-  .station-head {
-    display: flex; align-items: baseline; justify-content: space-between;
-    padding: 0 4px 10px;
+  .search-wrap { max-width: 640px; margin: 0 auto; padding: 0 14px; position: relative; }
+  #search {
+    width: 100%; padding: 11px 14px; border-radius: 12px; border: 1px solid #223041;
+    background: var(--card); color: var(--text); font-size: 15px; outline: none;
   }
+  #search:focus { border-color: #3570d0; }
+  #suggestions {
+    position: absolute; left: 14px; right: 14px; top: 46px; z-index: 30;
+    background: var(--card2); border: 1px solid #223041; border-radius: 12px;
+    overflow: hidden; display: none; box-shadow: 0 12px 30px #000a;
+  }
+  .sug { padding: 11px 14px; display: flex; justify-content: space-between; gap: 10px; cursor: pointer; }
+  .sug:hover, .sug.active { background: #223041; }
+  .sug .n { font-size: 14px; font-weight: 600; }
+  .sug .l { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .favs { max-width: 640px; margin: 12px auto 0; padding: 0 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--card); border: 1px solid #223041; border-radius: 999px;
+    padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--muted);
+  }
+  .chip.active { color: var(--text); border-color: var(--accent); }
+  .chip .x { color: var(--dim); font-size: 13px; padding: 0 2px; }
+  .chip .x:hover { color: #ff7a6e; }
+
+  .station { max-width: 640px; margin: 18px auto 10px; padding: 0 14px; }
+  .station-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px 10px; }
   .station-head h2 { font-size: 17px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-  .station-head span { color: var(--dim); font-size: 12px; }
+  .station-head span { color: var(--dim); font-size: 12px; text-align: right; }
 
   .board {
-    background: var(--card);
-    border-radius: 14px;
-    padding: 14px 16px;
-    margin-bottom: 10px;
-    border-left: 5px solid var(--dim);
-    display: flex; align-items: center; gap: 14px;
+    background: var(--card); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px;
+    border-left: 5px solid var(--dim); display: flex; align-items: center; gap: 14px;
   }
-  .board[data-line="KGL"] { border-left-color: var(--kgl); }
-  .board[data-line="SPL"] { border-left-color: var(--spl); }
-  .board[data-line="AGL"] { border-left-color: var(--agl); }
-
   .line-badge {
-    flex: 0 0 auto;
-    width: 52px; height: 34px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 14px; color: #fff;
+    flex: 0 0 auto; min-width: 52px; height: 34px; padding: 0 8px;
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 13px; color: #fff;
   }
-  .board[data-line="KGL"] .line-badge { background: var(--kgl); }
-  .board[data-line="SPL"] .line-badge { background: var(--spl); }
-  .board[data-line="AGL"] .line-badge { background: var(--agl); }
-
   .dest { flex: 1 1 auto; min-width: 0; }
   .dest .to { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
   .dest .name { font-size: 16px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dest .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-
   .times { flex: 0 0 auto; text-align: right; }
   .next { font-size: 34px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   .next small { font-size: 14px; font-weight: 600; color: var(--muted); }
   .next.due { color: #ffb02e; }
   .later { font-size: 11px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
   .later b { color: var(--text); font-weight: 650; }
+  .board.info .next { font-size: 20px; color: var(--muted); font-weight: 650; }
 
   .status {
     position: fixed; left: 0; right: 0; bottom: 0;
-    background: #0d131aee;
-    backdrop-filter: blur(6px);
-    border-top: 1px solid #1d2835;
-    padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
-    text-align: center;
+    background: #0d131aee; backdrop-filter: blur(6px); border-top: 1px solid #1d2835;
+    padding: 10px 18px calc(10px + env(safe-area-inset-bottom)); text-align: center;
   }
   .status small { color: var(--dim); font-size: 11px; display: block; }
-  .status .refreshing { color: var(--muted); }
   .status .err { color: #ff7a6e; }
 
-  .note {
-    max-width: 640px; margin: 4px auto 0; padding: 0 18px;
-    color: var(--dim); font-size: 11px; line-height: 1.6; text-align: center;
-  }
+  .note { max-width: 640px; margin: 8px auto 0; padding: 0 18px; color: var(--dim); font-size: 11px; line-height: 1.6; text-align: center; }
   .offline .next { color: var(--dim); }
+  .empty { color: var(--dim); text-align: center; padding: 30px 0; font-size: 14px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1><span class="live-dot"></span>Merdeka &amp; Plaza Rakyat</h1>
-  <p>Next train arrivals · auto-refreshes every minute</p>
+  <h1><span class="live-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px"></span>KL Train Board</h1>
+  <p>Next train arrivals · any Rapid KL station</p>
 </header>
 
-<div class="station" id="st-merdeka">
-  <div class="station-head">
-    <h2>Merdeka</h2>
-    <span>MRT · Kajang Line</span>
-  </div>
-  <div class="board" data-line="KGL" data-board="kgl-0">
-    <div class="line-badge">MRT</div>
-    <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Kajang</div>
-      <div class="sub">Kajang Line</div>
-    </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
-  </div>
-  <div class="board" data-line="KGL" data-board="kgl-1">
-    <div class="line-badge">MRT</div>
-    <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Kwasa Damansara</div>
-      <div class="sub">Kajang Line</div>
-    </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
-  </div>
+<div class="search-wrap">
+  <input id="search" type="text" placeholder="Search a station… (e.g. Bukit Jalil, KL Sentral)" autocomplete="off">
+  <div id="suggestions"></div>
 </div>
 
-<div class="station" id="st-plaza">
+<div class="favs" id="favs"></div>
+
+<div class="station" id="station" style="display:none">
   <div class="station-head">
-    <h2>Plaza Rakyat</h2>
-    <span>LRT · Sri Petaling Line · ~7 min walk from Merdeka</span>
+    <h2 id="st-name"></h2>
+    <span id="st-lines"></span>
   </div>
-  <div class="board" data-line="SPL" data-board="spl-0">
-    <div class="line-badge">LRT</div>
-    <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Sentul Timur</div>
-      <div class="sub">Sri Petaling Line</div>
-    </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
-  </div>
-  <div class="board" data-line="SPL" data-board="spl-1">
-    <div class="line-badge">LRT</div>
-    <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Putra Heights</div>
-      <div class="sub">Sri Petaling Line</div>
-    </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
-  </div>
-  <div class="board" data-line="AGL" data-board="agl-note">
-    <div class="line-badge">LRT</div>
-    <div class="dest">
-      <div class="to">Ampang Line</div>
-      <div class="name">Change at Chan Sow Lin</div>
-      <div class="sub">trains turn back at Chan Sow Lin since Jun 2026</div>
-    </div>
-    <div class="times"><div class="next" style="font-size:20px;color:var(--muted)">—</div><div class="later"></div></div>
-  </div>
+  <div id="boards"></div>
 </div>
+<div class="empty" id="empty" style="display:none">No station selected — search above.</div>
 
 <p class="note">
-  Ampang Line trains no longer serve Plaza Rakyat (temporary operating mode since 3 Jun 2026 —
-  they run Ampang ↔ Chan Sow Lin only). Take any Sri Petaling Line train to Chan Sow Lin and
-  change there for Ampang.<br>
-  Putrajaya Line also calls at Merdeka, but the arrival API has no data for it there —
-  board at Tun Razak Exchange (one stop towards Putrajaya).<br>
-  Times are generated from Rapid KL's official timetable, not live train positions.
-  Valid on normal service; unreliable during disruptions.
+  Times come from Rapid KL's official timetable via the journey-planner API — not live train positions.
+  The Ampang Line runs a turnback service (Ampang ↔ Chan Sow Lin) since 3 Jun 2026; its shared-station
+  timetables are stale, so boards show a transfer note instead. Putrajaya Line has no data at some stops
+  (e.g. Merdeka). Unreliable during disruptions.
 </p>
 
 <div class="status">
-  <small id="status-line">Loading arrivals…</small>
+  <small id="status-line">Loading stations…</small>
   <small>Source: MyRapid journey planner API (jp-web.myrapid.com.my)</small>
 </div>
 
 <script>
 "use strict";
 
-// each board queries the journey planner from the station's coordinates to the
-// terminus of that direction; the first matching rail leg carries
-// next_arrival_time_schedules for the boarding station.
-const BOARDS = {
-  "kgl-0": { routeIds: ["KGL"], from: [3.141969, 101.70205],  to: [2.982778, 101.790278] }, // Merdeka -> Kajang
-  "kgl-1": { routeIds: ["KGL"], from: [3.141969, 101.70205],  to: [3.176146, 101.572052] }, // Merdeka -> Kwasa Damansara
-  "spl-0": { routeIds: ["PH", "SPL"], from: [3.144049, 101.702105], to: [3.185897, 101.695217] }, // Plaza Rakyat -> Sentul Timur
-  "spl-1": { routeIds: ["PH", "SPL"], from: [3.144049, 101.702105], to: [2.996016, 101.575521] }, // Plaza Rakyat -> Putra Heights
-  // Ampang Line omitted: since 3 Jun 2026 its trains turn back at Chan Sow Lin
-  // and no longer serve Plaza Rakyat; the API timetable still shows the old
-  // through-service, so any "AGL" times it returns here would be fiction.
-};
+const API = "https://jp-web.myrapid.com.my/endpoint/geoservice";
+const LS_STATIONS = "ktb.stations.v2";
+const LS_FAVS = "ktb.favs.v2";
+const STATIONS_TTL = 7 * 24 * 3600 * 1000;
 
-const API = "https://jp-web.myrapid.com.my/endpoint/geoservice/journeyPlanner";
-const cache = {};   // board -> { times: [Date], fetchedAt, error }
+let STATIONS = [];        // [{key,name,lat,lon,lines:[{short,long,color,category,termA,termB,routeIds}]}]
+let favs = [];            // station keys
+let current = null;       // active station key
+const cache = {};         // boardKey -> {times:[Date], fetchedAt, error}
 
-// the API serves two key spellings depending on backend pod; read either
 const get = (o, name) => {
   if (!o || typeof o !== "object") return undefined;
   if (name in o) return o[name];
@@ -207,14 +139,12 @@ const get = (o, name) => {
   return o[camel];
 };
 
-// "2026-11-24 24:05:43" style times (hour can exceed 23) — parse as MYT (+08:00)
 function parseMYT(s) {
   const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(s);
   if (!m) return null;
-  let [, y, mo, d, h, mi, se] = m.map(Number);
+  const [, y, mo, d, h, mi, se] = m.map(Number);
   const extra = Math.floor(h / 24);
-  h %= 24;
-  return new Date(Date.UTC(y, mo - 1, d + extra, h, mi, se) - 8 * 3600 * 1000);
+  return new Date(Date.UTC(y, mo - 1, d + extra, h % 24, mi, se) - 8 * 3600 * 1000);
 }
 
 function myrNow() {
@@ -225,88 +155,186 @@ function myrNow() {
   }).format(new Date()).replace(",", "");
 }
 
-async function fetchBoard(id, cfg) {
+// ---------- stations index ----------
+
+async function loadStations() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LS_STATIONS) || "null");
+    if (cached && Date.now() - cached.at < STATIONS_TTL && cached.stations?.length) {
+      STATIONS = cached.stations;
+      return;
+    }
+  } catch (e) {}
+  const res = await fetch(`${API}/stations?scope=WMcentral&agency=rapidkl`, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`stations HTTP ${res.status}`);
+  const data = await res.json();
+  STATIONS = buildIndex(get(data, "data") || data);
+  try { localStorage.setItem(LS_STATIONS, JSON.stringify({ at: Date.now(), stations: STATIONS })); } catch (e) {}
+}
+
+function buildIndex(routes) {
+  const distM = (a, b) => {
+    const R = 6371000, rad = (x) => x * Math.PI / 180;
+    const dLa = rad(b.lat - a.lat), dLo = rad(b.lon - a.lon);
+    const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+  const byKey = new Map();   // normalized name -> station
+  for (const r of routes || []) {
+    const stops = (r.stops || []).filter((s) => s && s.stop_id && s.stop_name);
+    if (stops.length < 2) continue;
+    const termA = { name: stops[0].stop_name.trim(), lat: +stops[0].stop_lat, lon: +stops[0].stop_lon };
+    const termB = { name: stops[stops.length - 1].stop_name.trim(), lat: +stops[stops.length - 1].stop_lat, lon: +stops[stops.length - 1].stop_lon };
+    const line = {
+      short: r.route_short_name || "?",
+      long: r.route_long_name || "",
+      color: (r.route_color || "#5c6c7d").replace(/^#*/, "#"),
+      category: r.category || "RAIL",
+      routeIds: [r.route_id, r.route_short_name].filter(Boolean),
+      termA, termB,
+    };
+    for (const s of stops) {
+      const name = s.stop_name.trim().replace(/\s+/g, " ");
+      const key = name.toUpperCase();
+      const pt = { lat: +s.stop_lat, lon: +s.stop_lon };
+      let st = byKey.get(key);
+      if (!st) { st = { key, name, ...pt, lines: [] }; byKey.set(key, st); }
+      else if (distM(st, pt) > 250) continue;      // same name far away: skip (keep first)
+      if (!st.lines.some((l) => l.short === line.short)) st.lines.push(line);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------- boards ----------
+
+function boardDefs(st) {
+  const defs = [];
+  for (const line of st.lines) {
+    for (const dir of [0, 1]) {
+      const term = dir === 0 ? line.termB : line.termA;
+      defs.push({ id: `${st.key}||${line.short}||${dir}`, st, line, dir, term });
+    }
+  }
+  const catOrder = { MRT: 0, LRT: 1, MRL: 2, ERL: 3, BRT: 4 };
+  return defs.sort((a, b) =>
+    (catOrder[a.line.category] ?? 9) - (catOrder[b.line.category] ?? 9) ||
+    a.line.short.localeCompare(b.line.short) || a.dir - b.dir);
+}
+
+// Ampang Line turnback (since 3 Jun 2026): trains run Ampang <-> Chan Sow Lin only.
+// At any station that the Sri Petaling Line also serves (= shared corridor) or at
+// Chan Sow Lin itself, the AGL through-timetable is fiction -> show a note instead.
+// On the Ampang branch itself the shuttle does serve the stations, but the timetable
+// may predate the service change -> add a caution to those boards.
+function aglNote(st, line) {
+  if (line.short !== "AGL") return null;
+  const onSPL = st.lines.some((l) => l.short === "SPL");
+  const isCSL = /CHAN SOW LIN/i.test(st.name);
+  if (onSPL || isCSL) return { title: "Change at Chan Sow Lin", sub: "AGL trains turn back at Chan Sow Lin since Jun 2026" };
+  return null;   // branch station: normal board, caution appended by boardEl
+}
+
+async function fetchBoard(def) {
   const dep = myrNow();
-  const url = `${API}?agency=rapidkl&flng=${cfg.from[1]}&flat=${cfg.from[0]}` +
-              `&tlng=${cfg.to[1]}&tlat=${cfg.to[0]}` +
-              `&mode=transit&type=fastest&departure_datetime=${encodeURIComponent(dep)}`;
+  const url = `${API}/journeyPlanner?agency=rapidkl` +
+    `&flng=${def.st.lon}&flat=${def.st.lat}&tlng=${def.term.lon}&tlat=${def.term.lat}` +
+    `&mode=transit&type=fastest&departure_datetime=${encodeURIComponent(dep)}`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const plan = await res.json();
   for (const r of plan.routes || []) {
     for (const leg of r.legs || []) {
       const rd = get(leg, "route_details") || {};
-      if (rd.agency !== "rapidrail") continue;
       const rid = String(rd.route_id || rd.route_short_name || "").toUpperCase();
-      if (!cfg.routeIds.includes(rid)) continue;
+      if (!def.line.routeIds.map((x) => String(x).toUpperCase()).includes(rid)) continue;
       const times = (get(leg, "next_arrival_time_schedules") || [])
         .map(parseMYT).filter(Boolean).sort((a, b) => a - b);
       if (times.length) return { times, fetchedAt: Date.now() };
     }
   }
-  return { times: [], fetchedAt: Date.now() }; // e.g. outside service hours
+  return { times: [], fetchedAt: Date.now() };
 }
 
-async function refreshAll() {
-  setStatus("Refreshing…", "refreshing");
-  const ids = Object.keys(BOARDS);
-  await Promise.all(ids.map(async (id) => {
+async function refreshBoards(defs) {
+  setStatus("Refreshing…");
+  await Promise.all(defs.map(async (def, i) => {
+    await new Promise((r) => setTimeout(r, i * 120));   // stagger politely
     try {
-      cache[id] = await fetchBoard(id, BOARDS[id]);
+      cache[def.id] = await fetchBoard(def);
     } catch (e) {
-      cache[id] = { times: cache[id]?.times || [], fetchedAt: Date.now(), error: e.message };
+      cache[def.id] = { times: cache[def.id]?.times || [], fetchedAt: Date.now(), error: e.message };
     }
   }));
-  const errs = ids.filter((id) => cache[id]?.error);
-  const anyTimes = ids.some((id) => cache[id]?.times.length);
-  const age = Math.round((Date.now() - Math.min(...ids.map((id) => cache[id].fetchedAt))) / 1000);
+  const errs = defs.filter((d) => cache[d.id]?.error);
+  const anyTimes = defs.some((d) => cache[d.id]?.times.length);
   setStatus(
-    errs.length && !anyTimes ? `API unreachable (${cache[errs[0]].error})` :
-    errs.length ? `Updated ${age}s ago · ${errs.length} board(s) failed` :
-    `Updated ${age}s ago`,
+    errs.length && !anyTimes ? `API unreachable (${cache[errs[0].id].error})` :
+    errs.length ? `Updated just now · ${errs.length} board(s) failed` : "Updated just now",
     errs.length && !anyTimes ? "err" : ""
   );
   render();
 }
 
 function fmtClock(d) {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(d);
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+}
+
+function boardEl(def) {
+  const el = document.createElement("div");
+  el.className = "board";
+  el.dataset.board = def.id;
+  el.style.borderLeftColor = def.line.color;
+  const note = aglNote(def.st, def.line);
+  // On the Ampang branch, the direction that used to run through to the city now
+  // turns back at Chan Sow Lin — label where the train actually takes you.
+  let destName = def.term.name;
+  if (def.line.short === "AGL" && !note && /SENTUL TIMUR/i.test(def.term.name)) {
+    destName = "Chan Sow Lin (change for city)";
+  }
+  el.innerHTML = `
+    <div class="line-badge" style="background:${def.line.color}">${def.line.short}</div>
+    <div class="dest">
+      <div class="to">${note ? def.line.long || def.line.short : "Towards"}</div>
+      <div class="name">${note ? note.title : destName}</div>
+      <div class="sub">${note ? note.sub : def.line.long}${def.line.short === "AGL" && !note ? " · turnback service — verify locally" : ""}</div>
+    </div>
+    <div class="times"><div class="next">${note ? "—" : "—"}</div><div class="later"></div></div>`;
+  if (note) el.classList.add("info");
+  return el;
 }
 
 function render() {
   const now = Date.now();
-  for (const id of Object.keys(BOARDS)) {
-    const el = document.querySelector(`[data-board="${id}"]`);
-    if (!el) continue;
-    const next = el.querySelector(".next");
-    const later = el.querySelector(".later");
-    const board = el.closest(".board");
-    const times = (cache[id]?.times || []).filter((t) => t.getTime() > now);
-
-    if (!cache[id]) { next.textContent = "—"; later.textContent = ""; continue; }
+  for (const el of document.querySelectorAll("[data-board]")) {
+    const def = el.__def;
+    if (!def) continue;
+    if (el.classList.contains("info")) continue;
+    const next = el.querySelector(".next"), later = el.querySelector(".later");
+    const entry = cache[def.id];
+    const times = (entry?.times || []).filter((t) => t.getTime() > now);
+    if (!entry) { next.textContent = "—"; continue; }
     if (!times.length) {
-      board.classList.add("offline");
+      el.classList.add("offline");
       next.textContent = "—";
-      later.textContent = cache[id].error ? "unavailable" : "no more trains today";
+      later.textContent = entry.error ? "unavailable" : "no more trains today";
       continue;
     }
-    board.classList.remove("offline");
+    el.classList.remove("offline");
     const secs = Math.round((times[0].getTime() - now) / 1000);
     if (secs <= 60) {
       next.textContent = secs <= 15 ? "Arriving" : secs + "s";
-      next.classList.toggle("due", true);
+      next.classList.add("due");
     } else {
       next.innerHTML = Math.round(secs / 60) + " <small>min</small>";
       next.classList.remove("due");
     }
     const l2 = times.slice(1, 3);
-    later.innerHTML = l2.length
-      ? l2.map((t) => `<b>${fmtClock(t)}</b>`).join(" · ") + (times.length > 3 ? " ·…" : "")
-      : "";
+    later.innerHTML = l2.length ? l2.map((t) => `<b>${fmtClock(t)}</b>`).join(" · ") + (times.length > 3 ? " ·…" : "") : "";
   }
 }
+
+// ---------- ui ----------
 
 function setStatus(text, cls) {
   const el = document.getElementById("status-line");
@@ -314,10 +342,121 @@ function setStatus(text, cls) {
   el.className = cls || "";
 }
 
-render();
-refreshAll();
-setInterval(render, 1000);          // local countdown tick
-setInterval(refreshAll, 60_000);    // data refresh
+let refreshTimer = null;
+
+function showStation(key) {
+  current = key;
+  const st = STATIONS.find((s) => s.key === key);
+  const stationEl = document.getElementById("station");
+  const boardsEl = document.getElementById("boards");
+  const emptyEl = document.getElementById("empty");
+  boardsEl.innerHTML = "";
+  for (const k of Object.keys(cache)) delete cache[k];
+  if (!st) { stationEl.style.display = "none"; emptyEl.style.display = "block"; renderFavs(); return; }
+  emptyEl.style.display = "none";
+  stationEl.style.display = "block";
+  document.getElementById("st-name").textContent = st.name;
+  document.getElementById("st-lines").textContent = st.lines.map((l) => l.long || l.short).join(" · ");
+
+  const defs = boardDefs(st);
+  for (const def of defs) {
+    const el = boardEl(def);
+    el.__def = def;
+    boardsEl.appendChild(el);
+  }
+  render();
+  clearInterval(refreshTimer);
+  refreshBoards(defs);
+  refreshTimer = setInterval(() => refreshBoards(defs), 60_000);
+  renderFavs();
+  location.hash = encodeURIComponent(key);
+}
+
+function renderFavs() {
+  const el = document.getElementById("favs");
+  el.innerHTML = "";
+  for (const key of favs) {
+    const st = STATIONS.find((s) => s.key === key);
+    const chip = document.createElement("div");
+    chip.className = "chip" + (key === current ? " active" : "");
+    chip.innerHTML = `<span>${st ? st.name : key}</span><span class="x" title="remove">✕</span>`;
+    chip.querySelector(".x").addEventListener("click", (e) => {
+      e.stopPropagation();
+      favs = favs.filter((k) => k !== key);
+      localStorage.setItem(LS_FAVS, JSON.stringify(favs));
+      if (current === key) showStation(favs[0] || "");
+      else renderFavs();
+    });
+    chip.addEventListener("click", () => { if (key !== current) showStation(key); });
+    el.appendChild(chip);
+  }
+}
+
+const searchEl = document.getElementById("search");
+const sugEl = document.getElementById("suggestions");
+let sugItems = [], sugIndex = -1;
+
+function renderSuggestions(list) {
+  sugItems = list; sugIndex = -1;
+  sugEl.innerHTML = "";
+  if (!list.length) { sugEl.style.display = "none"; return; }
+  for (const st of list) {
+    const d = document.createElement("div");
+    d.className = "sug";
+    d.innerHTML = `<span class="n">${st.name}</span><span class="l">${st.lines.map((l) => l.short).join(" · ")}</span>`;
+    d.addEventListener("click", () => pickStation(st));
+    sugEl.appendChild(d);
+  }
+  sugEl.style.display = "block";
+}
+
+function pickStation(st) {
+  if (!favs.includes(st.key)) {
+    favs.push(st.key);
+    localStorage.setItem(LS_FAVS, JSON.stringify(favs));
+  }
+  searchEl.value = "";
+  renderSuggestions([]);
+  showStation(st.key);
+}
+
+searchEl.addEventListener("input", () => {
+  const q = searchEl.value.trim().toUpperCase();
+  if (!q) { renderSuggestions([]); return; }
+  renderSuggestions(
+    STATIONS.filter((s) => s.key.includes(q))
+      .slice(0, 8)
+  );
+});
+searchEl.addEventListener("keydown", (e) => {
+  const items = [...sugEl.querySelectorAll(".sug")];
+  if (e.key === "ArrowDown" && items.length) { sugIndex = Math.min(sugIndex + 1, items.length - 1); }
+  else if (e.key === "ArrowUp" && items.length) { sugIndex = Math.max(sugIndex - 1, 0); }
+  else if (e.key === "Enter" && sugItems[sugIndex]) { pickStation(sugItems[sugIndex]); return; }
+  else if (e.key === "Escape") { renderSuggestions([]); return; }
+  else return;
+  e.preventDefault();
+  items.forEach((el, i) => el.classList.toggle("active", i === sugIndex));
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".search-wrap")) renderSuggestions([]);
+});
+
+setInterval(render, 1000);
+
+(async () => {
+  try {
+    await loadStations();
+  } catch (e) {
+    setStatus(`Could not load station list (${e.message})`, "err");
+    return;
+  }
+  try { favs = JSON.parse(localStorage.getItem(LS_FAVS) || "[]"); } catch (e) { favs = []; }
+  favs = favs.filter((k) => STATIONS.some((s) => s.key === k));
+  if (!favs.length) favs = ["MERDEKA", "PLAZA RAKYAT"];
+  const hashKey = decodeURIComponent(location.hash.replace(/^#/, "")).toUpperCase();
+  showStation(STATIONS.some((s) => s.key === hashKey) ? hashKey : favs[0]);
+})();
 </script>
 </body>
 </html>
