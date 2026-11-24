@@ -134,7 +134,7 @@
 <div class="station" id="st-plaza">
   <div class="station-head">
     <h2>Plaza Rakyat</h2>
-    <span>LRT · ~7 min walk from Merdeka</span>
+    <span>LRT · Sri Petaling Line · ~7 min walk from Merdeka</span>
   </div>
   <div class="board" data-line="SPL" data-board="spl-0">
     <div class="line-badge">LRT</div>
@@ -154,27 +154,21 @@
     </div>
     <div class="times"><div class="next">—</div><div class="later"></div></div>
   </div>
-  <div class="board" data-line="AGL" data-board="agl-0">
+  <div class="board" data-line="AGL" data-board="agl-note">
     <div class="line-badge">LRT</div>
     <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Sentul Timur</div>
-      <div class="sub">Ampang Line</div>
+      <div class="to">Ampang Line</div>
+      <div class="name">Change at Chan Sow Lin</div>
+      <div class="sub">trains turn back at Chan Sow Lin since Jun 2026</div>
     </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
-  </div>
-  <div class="board" data-line="AGL" data-board="agl-1">
-    <div class="line-badge">LRT</div>
-    <div class="dest">
-      <div class="to">Towards</div>
-      <div class="name">Ampang</div>
-      <div class="sub">Ampang Line</div>
-    </div>
-    <div class="times"><div class="next">—</div><div class="later"></div></div>
+    <div class="times"><div class="next" style="font-size:20px;color:var(--muted)">—</div><div class="later"></div></div>
   </div>
 </div>
 
 <p class="note">
+  Ampang Line trains no longer serve Plaza Rakyat (temporary operating mode since 3 Jun 2026 —
+  they run Ampang ↔ Chan Sow Lin only). Take any Sri Petaling Line train to Chan Sow Lin and
+  change there for Ampang.<br>
   Putrajaya Line also calls at Merdeka, but the arrival API has no data for it there —
   board at Tun Razak Exchange (one stop towards Putrajaya).<br>
   Times are generated from Rapid KL's official timetable, not live train positions.
@@ -197,8 +191,9 @@ const BOARDS = {
   "kgl-1": { routeIds: ["KGL"], from: [3.141969, 101.70205],  to: [3.176146, 101.572052] }, // Merdeka -> Kwasa Damansara
   "spl-0": { routeIds: ["PH", "SPL"], from: [3.144049, 101.702105], to: [3.185897, 101.695217] }, // Plaza Rakyat -> Sentul Timur
   "spl-1": { routeIds: ["PH", "SPL"], from: [3.144049, 101.702105], to: [2.996016, 101.575521] }, // Plaza Rakyat -> Putra Heights
-  "agl-0": { routeIds: ["AG", "AGL"], from: [3.144049, 101.702105], to: [3.185897, 101.695217] }, // Plaza Rakyat -> Sentul Timur
-  "agl-1": { routeIds: ["AG", "AGL"], from: [3.144049, 101.702105], to: [3.150318, 101.760049] }, // Plaza Rakyat -> Ampang
+  // Ampang Line omitted: since 3 Jun 2026 its trains turn back at Chan Sow Lin
+  // and no longer serve Plaza Rakyat; the API timetable still shows the old
+  // through-service, so any "AGL" times it returns here would be fiction.
 };
 
 const API = "https://jp-web.myrapid.com.my/endpoint/geoservice/journeyPlanner";
