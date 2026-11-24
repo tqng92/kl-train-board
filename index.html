@@ -414,15 +414,29 @@ function computeKtmBoard(def) {
 
 // ---------- boards ----------
 
+// is this terminus effectively the station itself? (a "Towards <here>" board
+// at <here> can never be boarded — skip it)
+function isSameStation(st, term) {
+  if (!term) return false;
+  const norm = (s) => (s || "").trim().toUpperCase().replace(/\s+/g, " ");
+  if (norm(st.name) === norm(term.name)) return true;
+  const R = 6371000, rad = (x) => x * Math.PI / 180;
+  const dLa = rad(term.lat - st.lat), dLo = rad(term.lon - st.lon);
+  const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(st.lat)) * Math.cos(rad(term.lat)) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, h))) < 250;
+}
+
 function boardDefs(st) {
   const defs = [];
   for (const line of st.lines) {
     if (line.src === "ktm") {
       // KTM line entry carries routeId+dir; the byStop table comes from KTM.lines
+      if (isSameStation(st, line.term)) continue;   // terminus = this station
       defs.push({ id: `${st.key}||${line.routeId}||${line.dir}`, st, line, type: "ktm", term: line.term });
     } else {
       for (const dir of [0, 1]) {
         const term = dir === 0 ? line.termB : line.termA;
+        if (isSameStation(st, term)) continue;      // terminus = this station
         defs.push({ id: `${st.key}||${line.short}||${dir}`, st, line, dir, term, type: "jp" });
       }
     }
