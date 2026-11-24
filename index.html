@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KL Train Board</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
   :root {
     --bg: #0b0f14; --card: #141b24; --card2: #1a232e;
@@ -87,12 +88,12 @@
 <body>
 
 <header>
-  <h1><span class="live-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px"></span>KL Train Board</h1>
-  <p>Next train arrivals · any Rapid KL station</p>
+  <h1><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:1px"></span>KL Train Board</h1>
+  <p>Next train arrivals · Rapid KL &amp; KTM Komuter</p>
 </header>
 
 <div class="search-wrap">
-  <input id="search" type="text" placeholder="Search a station… (e.g. Bukit Jalil, KL Sentral)" autocomplete="off">
+  <input id="search" type="text" placeholder="Search a station… (e.g. KL Sentral, Bukit Jalil)" autocomplete="off">
   <div id="suggestions"></div>
 </div>
 
@@ -108,29 +109,45 @@
 <div class="empty" id="empty" style="display:none">No station selected — search above.</div>
 
 <p class="note">
-  Times come from Rapid KL's official timetable via the journey-planner API — not live train positions.
-  The Ampang Line runs a turnback service (Ampang ↔ Chan Sow Lin) since 3 Jun 2026; its shared-station
-  timetables are stale, so boards show a transfer note instead. Putrajaya Line has no data at some stops
-  (e.g. Merdeka). Unreliable during disruptions.
+  Rapid KL times come from the official timetable via the journey-planner API — not live positions.
+  KTM Komuter times are today's published timetable (real per-train schedule), valid while KTMB's feed
+  is current. The Ampang Line runs a turnback service (Ampang ↔ Chan Sow Lin) since 3 Jun 2026; its
+  shared-station timetables are stale, so boards show a transfer note instead. Putrajaya Line has no
+  data at some stops (e.g. Merdeka). Unreliable during disruptions.
 </p>
 
 <div class="status">
   <small id="status-line">Loading stations…</small>
-  <small>Source: MyRapid journey planner API (jp-web.myrapid.com.my)</small>
+  <small>Sources: MyRapid journey planner (jp-web.myrapid.com.my) · KTM Komuter timetable (data.gov.my)</small>
 </div>
 
 <script>
 "use strict";
 
 const API = "https://jp-web.myrapid.com.my/endpoint/geoservice";
-const LS_STATIONS = "ktb.stations.v2";
+const KTMB_ZIP = "https://api.data.gov.my/gtfs-static/ktmb";
+const LS_STATIONS = "ktb.stations.v5";
+const LS_KTM = "ktb.ktm.v5";
 const LS_FAVS = "ktb.favs.v2";
 const STATIONS_TTL = 7 * 24 * 3600 * 1000;
+const KTM_TTL = 24 * 3600 * 1000;
 
-let STATIONS = [];        // [{key,name,lat,lon,lines:[{short,long,color,category,termA,termB,routeIds}]}]
-let favs = [];            // station keys
-let current = null;       // active station key
-const cache = {};         // boardKey -> {times:[Date], fetchedAt, error}
+// stations published under several names across feeds — merge into one entry
+const ALIASES = {
+  "KL SENTRAL": ["KL SENTRAL - REDONE", "KL SENTRAL"],
+};
+
+// KTM Komuter routes shown as boards (Klang Valley lines only)
+const KTM_LINES = {
+  "KC05_KB18": { name: "Seremban Line (KTM Komuter)", color: "#3C5A9F" },
+  "KA15_KD19": { name: "Port Klang Line (KTM Komuter)", color: "#DC2424" },
+};
+
+let STATIONS = [];
+let KTM = null;           // parsed komuter timetable
+let favs = [];
+let current = null;
+const cache = {};
 
 const get = (o, name) => {
   if (!o || typeof o !== "object") return undefined;
@@ -155,21 +172,38 @@ function myrNow() {
   }).format(new Date()).replace(",", "");
 }
 
-// ---------- stations index ----------
+function mytParts() {
+  const iso = myrNow();               // "YYYY-MM-DD HH:MM:SS"
+  const [d, t] = iso.split(" ");
+  const secs = ((h, m, s) => h * 3600 + m * 60 + s)(...t.split(":").map(Number));
+  const dow = new Date(`${d}T00:00:00Z`).getUTCDay();   // 0=Sun..6=Sat
+  return { date: d, ymd: d.replace(/-/g, ""), secs, dow };
+}
+
+function csv(text) {
+  const rows = text.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
+  const header = rows.shift().split(",");
+  return rows.filter(Boolean).map((r) => {
+    const cells = r.split(",");
+    return Object.fromEntries(header.map((h, i) => [h, (cells[i] || "").trim()]));
+  });
+}
+
+// ---------- station index (Rapid KL via /stations) ----------
 
 async function loadStations() {
   try {
     const cached = JSON.parse(localStorage.getItem(LS_STATIONS) || "null");
     if (cached && Date.now() - cached.at < STATIONS_TTL && cached.stations?.length) {
-      STATIONS = cached.stations;
-      return;
+      return cached.stations;
     }
   } catch (e) {}
   const res = await fetch(`${API}/stations?scope=WMcentral&agency=rapidkl`, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`stations HTTP ${res.status}`);
   const data = await res.json();
-  STATIONS = buildIndex(get(data, "data") || data);
-  try { localStorage.setItem(LS_STATIONS, JSON.stringify({ at: Date.now(), stations: STATIONS })); } catch (e) {}
+  const built = buildIndex(get(data, "data") || data);
+  try { localStorage.setItem(LS_STATIONS, JSON.stringify({ at: Date.now(), stations: built })); } catch (e) {}
+  return built;
 }
 
 function buildIndex(routes) {
@@ -179,31 +213,203 @@ function buildIndex(routes) {
     const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(h));
   };
-  const byKey = new Map();   // normalized name -> station
+  const byKey = new Map();
   for (const r of routes || []) {
     const stops = (r.stops || []).filter((s) => s && s.stop_id && s.stop_name);
     if (stops.length < 2) continue;
-    const termA = { name: stops[0].stop_name.trim(), lat: +stops[0].stop_lat, lon: +stops[0].stop_lon };
-    const termB = { name: stops[stops.length - 1].stop_name.trim(), lat: +stops[stops.length - 1].stop_lat, lon: +stops[stops.length - 1].stop_lon };
     const line = {
       short: r.route_short_name || "?",
       long: r.route_long_name || "",
       color: (r.route_color || "#5c6c7d").replace(/^#*/, "#"),
       category: r.category || "RAIL",
       routeIds: [r.route_id, r.route_short_name].filter(Boolean),
-      termA, termB,
+      termA: { name: stops[0].stop_name.trim(), lat: +stops[0].stop_lat, lon: +stops[0].stop_lon },
+      termB: { name: stops[stops.length - 1].stop_name.trim(), lat: +stops[stops.length - 1].stop_lat, lon: +stops[stops.length - 1].stop_lon },
+      src: "jp",
     };
     for (const s of stops) {
       const name = s.stop_name.trim().replace(/\s+/g, " ");
       const key = name.toUpperCase();
-      const pt = { lat: +s.stop_lat, lon: +s.stop_lon };
-      let st = byKey.get(key);
-      if (!st) { st = { key, name, ...pt, lines: [] }; byKey.set(key, st); }
-      else if (distM(st, pt) > 250) continue;      // same name far away: skip (keep first)
+      const st = byKey.get(key) || { key, name, lat: +s.stop_lat, lon: +s.stop_lon, lines: [] };
+      if (byKey.has(key) && distM(st, { lat: +s.stop_lat, lon: +s.stop_lon }) > 250) continue;
       if (!st.lines.some((l) => l.short === line.short)) st.lines.push(line);
+      byKey.set(key, st);
     }
   }
-  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...byKey.values()];
+}
+
+// merge alias-named stations into their canonical entry (e.g. KJL "KL SENTRAL - REDONE" -> "KL SENTRAL")
+function applyAliases(stations) {
+  for (const [canonical, aliases] of Object.entries(ALIASES)) {
+    const target = stations.find((s) => s.key === canonical);
+    if (!target) continue;
+    for (const alias of aliases) {
+      if (alias === canonical) continue;
+      const src = stations.find((s) => s.key === alias);
+      if (src) {
+        for (const l of src.lines) if (!target.lines.some((x) => x.short === l.short)) target.lines.push(l);
+        stations.splice(stations.indexOf(src), 1);
+      }
+    }
+  }
+}
+
+// fold KTM Komuter stops into the station list (merge by name within 250 m)
+function mergeKtmStations(stations, ktm) {
+  const added = [];
+  const distM = (a, b) => {
+    const R = 6371000, rad = (x) => x * Math.PI / 180;
+    const dLa = rad(b.lat - a.lat), dLo = rad(b.lon - a.lon);
+    const h = Math.sin(dLa / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLo / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+  for (const ks of ktm.stations) {
+    const near = stations.find((s) => s.name.toUpperCase() === ks.name.toUpperCase()) ||
+                 stations.find((s) => distM(s, ks) < 250);
+    // identity: jp lines are unique by short name; ktm lines by route+direction
+    // (all four Komuter boards share short "KTM")
+    const sig = (l) => (l.src === "ktm" || l.routeId ? `ktm:${l.routeId}/${l.dir}` : `jp:${l.short}`);
+    if (near) {
+      for (const l of ks.lines) if (!near.lines.some((x) => sig(x) === sig(l))) near.lines.push(l);
+    } else {
+      stations.push({ key: ks.key, name: ks.name, lat: ks.lat, lon: ks.lon, lines: [...ks.lines] });
+      added.push(ks.key);
+    }
+  }
+  stations.sort((a, b) => a.name.localeCompare(b.name));
+  return added;
+}
+
+// ---------- KTM Komuter timetable (data.gov.my GTFS static) ----------
+
+async function loadKtm() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(LS_KTM) || "null");
+    if (cached && Date.now() - cached.at < KTM_TTL && cached.ktm?.stations?.length) {
+      return cached.ktm;
+    }
+  } catch (e) {}
+  if (typeof JSZip === "undefined") throw new Error("unzip library unavailable");
+  const res = await fetch(KTMB_ZIP);
+  if (!res.ok) throw new Error(`ktmb zip HTTP ${res.status}`);
+  const zip = await JSZip.loadAsync(await res.arrayBuffer());
+  const rows = {};
+  for (const name of ["stops.txt", "trips.txt", "stop_times.txt", "calendar.txt", "calendar_dates.txt"]) {
+    const f = zip.file(name);
+    rows[name] = f ? csv(await f.async("string")) : [];
+  }
+
+  // calendar: services by id with weekday flags + date range
+  const services = {};
+  for (const c of rows["calendar.txt"]) {
+    services[c.service_id] = {
+      days: [c.sunday, c.monday, c.tuesday, c.wednesday, c.thursday, c.friday, c.saturday].map((x) => x === "1"),
+      start: c.start_date, end: c.end_date,
+    };
+  }
+  const exceptions = rows["calendar_dates.txt"].map((x) => ({ service: x.service_id, date: x.date, type: x.exception_type }));
+
+  const tripMeta = new Map();
+  for (const t of rows["trips.txt"]) {
+    if (!KTM_LINES[t.route_id]) continue;
+    tripMeta.set(t.trip_id, { route: t.route_id, dir: t.direction_id, service: t.service_id });
+  }
+
+  // per route+dir: terminus (max/min stop_sequence) and per-stop times tagged with service
+  const dirs = new Map();   // `${route}|${dir}` -> { termId, termName, maxSeq, byStop: Map(stop -> [{sec, service}]) }
+  const stopInfo = new Map();
+  for (const s of rows["stops.txt"]) {
+    if (s.stop_id && s.stop_name) stopInfo.set(s.stop_id, { name: s.stop_name.trim(), lat: +s.stop_lat, lon: +s.stop_lon });
+  }
+  for (const st of rows["stop_times.txt"]) {
+    const meta = tripMeta.get(st.trip_id);
+    if (!meta) continue;
+    const key = `${meta.route}|${meta.dir}`;
+    let d = dirs.get(key);
+    if (!d) { d = { termId: null, maxSeq: null, byStop: new Map() }; dirs.set(key, d); }
+    const seq = +st.stop_sequence;
+    const info = stopInfo.get(st.stop_id);
+    if (!info) continue;
+    const time = st.departure_time || st.arrival_time;
+    const [h, m, s2] = time.split(":").map(Number);
+    if (!d.byStop.has(st.stop_id)) d.byStop.set(st.stop_id, []);
+    d.byStop.get(st.stop_id).push({ sec: h * 3600 + m * 60 + s2, service: meta.service });
+    // destination of a trip = the stop with the highest stop_sequence in that
+    // trip (stop_sequence runs in travel order for BOTH directions)
+    if (d.maxSeq === null || seq > d.maxSeq) { d.maxSeq = seq; d.termId = st.stop_id; }
+  }
+
+  // assemble: ktm.stations (only stops actually served by the two lines) + lines with termini
+  const stations = new Map();
+  const lines = [];
+  for (const [routeId, meta] of Object.entries(KTM_LINES)) {
+    for (const dir of ["0", "1"]) {
+      const d = dirs.get(`${routeId}|${dir}`);
+      if (!d || !d.termId) continue;
+      const term = stopInfo.get(d.termId);
+      lines.push({
+        routeId, dir,
+        name: meta.name,
+        color: meta.color,
+        short: "KTM",
+        term: { id: d.termId, name: term?.name || "?", lat: term?.lat, lon: term?.lon },
+        stops: [...d.byStop.keys()],
+      });
+    }
+  }
+  for (const line of lines) {
+    for (const stopId of line.stops) {
+      const info = stopInfo.get(stopId);
+      if (!info) continue;
+      const key = info.name.toUpperCase();
+      const st = stations.get(key) || { key, name: info.name, lat: info.lat, lon: info.lon, lines: [], stopIds: [] };
+      if (!st.stopIds.includes(stopId)) st.stopIds.push(stopId);
+      if (!st.lines.some((l) => l.routeId === line.routeId && l.dir === line.dir)) {
+        st.lines.push({ routeId: line.routeId, dir: line.dir, name: line.name, color: line.color, short: line.short, term: line.term, src: "ktm" });
+      }
+      stations.set(key, st);
+    }
+  }
+  // attach full byStop tables to lines (shared object per line entry)
+  const ktm = {
+    services, exceptions,
+    lines: lines.map((l) => ({ ...l, byStop: [...dirs.get(`${l.routeId}|${l.dir}`).byStop.entries()] })),
+    stations: [...stations.values()],
+  };
+  try { localStorage.setItem(LS_KTM, JSON.stringify({ at: Date.now(), ktm })); } catch (e) {}
+  return ktm;
+}
+
+function servicesActiveToday(ktm) {
+  const { ymd, dow } = mytParts();
+  const active = new Set();
+  for (const [id, s] of Object.entries(ktm.services)) {
+    if (ymd >= s.start && ymd <= s.end && s.days[dow]) active.add(id);
+  }
+  for (const x of ktm.exceptions) {
+    if (x.date === ymd) { if (x.type === "1") active.add(x.service); else active.delete(x.service); }
+  }
+  return active;
+}
+
+// compute today's upcoming times for a KTM board (static timetable, this station only)
+function computeKtmBoard(def) {
+  const active = servicesActiveToday(KTM);
+  const { date } = mytParts();
+  const myIds = new Set(def.ktmStopIds || []);
+  const rows = [];
+  for (const [stopId, entries] of def.ktmByStop || []) {
+    if (!myIds.has(stopId)) continue;
+    for (const e of entries) {
+      if (!active.has(e.service)) continue;
+      const [h, m, s] = [Math.floor(e.sec / 3600), Math.floor((e.sec % 3600) / 60), e.sec % 60];
+      const hh = String(h).padStart(2, "0"), mm = String(m).padStart(2, "0"), ss = String(s).padStart(2, "0");
+      const d = parseMYT(`${date} ${hh}:${mm}:${ss}`);
+      if (d) rows.push(d);
+    }
+  }
+  return rows.filter((d) => d.getTime() > Date.now()).sort((a, b) => a - b);
 }
 
 // ---------- boards ----------
@@ -211,31 +417,33 @@ function buildIndex(routes) {
 function boardDefs(st) {
   const defs = [];
   for (const line of st.lines) {
-    for (const dir of [0, 1]) {
-      const term = dir === 0 ? line.termB : line.termA;
-      defs.push({ id: `${st.key}||${line.short}||${dir}`, st, line, dir, term });
+    if (line.src === "ktm") {
+      // KTM line entry carries routeId+dir; the byStop table comes from KTM.lines
+      defs.push({ id: `${st.key}||${line.routeId}||${line.dir}`, st, line, type: "ktm", term: line.term });
+    } else {
+      for (const dir of [0, 1]) {
+        const term = dir === 0 ? line.termB : line.termA;
+        defs.push({ id: `${st.key}||${line.short}||${dir}`, st, line, dir, term, type: "jp" });
+      }
     }
   }
-  const catOrder = { MRT: 0, LRT: 1, MRL: 2, ERL: 3, BRT: 4 };
+  const catOrder = { MRT: 0, LRT: 1, MRL: 2, "KTM Komuter": 3, ERL: 4, BRT: 5 };
+  const isKtm = (d) => d.type === "ktm";
   return defs.sort((a, b) =>
-    (catOrder[a.line.category] ?? 9) - (catOrder[b.line.category] ?? 9) ||
+    (isKtm(a) ? 3 : catOrder[a.line.category] ?? 9) - (isKtm(b) ? 3 : catOrder[b.line.category] ?? 9) ||
     a.line.short.localeCompare(b.line.short) || a.dir - b.dir);
 }
 
 // Ampang Line turnback (since 3 Jun 2026): trains run Ampang <-> Chan Sow Lin only.
-// At any station that the Sri Petaling Line also serves (= shared corridor) or at
-// Chan Sow Lin itself, the AGL through-timetable is fiction -> show a note instead.
-// On the Ampang branch itself the shuttle does serve the stations, but the timetable
-// may predate the service change -> add a caution to those boards.
 function aglNote(st, line) {
   if (line.short !== "AGL") return null;
   const onSPL = st.lines.some((l) => l.short === "SPL");
   const isCSL = /CHAN SOW LIN/i.test(st.name);
   if (onSPL || isCSL) return { title: "Change at Chan Sow Lin", sub: "AGL trains turn back at Chan Sow Lin since Jun 2026" };
-  return null;   // branch station: normal board, caution appended by boardEl
+  return null;
 }
 
-async function fetchBoard(def) {
+async function fetchJpBoard(def) {
   const dep = myrNow();
   const url = `${API}/journeyPlanner?agency=rapidkl` +
     `&flng=${def.st.lon}&flat=${def.st.lat}&tlng=${def.term.lon}&tlat=${def.term.lat}` +
@@ -257,15 +465,24 @@ async function fetchBoard(def) {
 }
 
 async function refreshBoards(defs) {
-  setStatus("Refreshing…");
-  await Promise.all(defs.map(async (def, i) => {
-    await new Promise((r) => setTimeout(r, i * 120));   // stagger politely
+  const jpDefs = defs.filter((d) => d.type === "jp");
+  setStatus(jpDefs.length ? "Refreshing…" : "Updated just now");
+  await Promise.all(jpDefs.map(async (def, i) => {
+    await new Promise((r) => setTimeout(r, i * 120));
     try {
-      cache[def.id] = await fetchBoard(def);
+      cache[def.id] = await fetchJpBoard(def);
     } catch (e) {
       cache[def.id] = { times: cache[def.id]?.times || [], fetchedAt: Date.now(), error: e.message };
     }
   }));
+  for (const def of defs) {
+    if (def.type !== "ktm") continue;
+    try {
+      cache[def.id] = { times: computeKtmBoard(def), fetchedAt: Date.now() };
+    } catch (e) {
+      cache[def.id] = { times: [], fetchedAt: Date.now(), error: e.message };
+    }
+  }
   const errs = defs.filter((d) => cache[d.id]?.error);
   const anyTimes = defs.some((d) => cache[d.id]?.times.length);
   setStatus(
@@ -285,21 +502,21 @@ function boardEl(def) {
   el.className = "board";
   el.dataset.board = def.id;
   el.style.borderLeftColor = def.line.color;
-  const note = aglNote(def.st, def.line);
-  // On the Ampang branch, the direction that used to run through to the city now
-  // turns back at Chan Sow Lin — label where the train actually takes you.
-  let destName = def.term.name;
-  if (def.line.short === "AGL" && !note && /SENTUL TIMUR/i.test(def.term.name)) {
+  const note = def.type === "jp" ? aglNote(def.st, def.line) : null;
+  let destName = def.term?.name || "";
+  if (def.type === "jp" && def.line.short === "AGL" && !note && /SENTUL TIMUR/i.test(def.term.name)) {
     destName = "Chan Sow Lin (change for city)";
   }
+  const badge = def.type === "ktm" ? "KTM" : def.line.short;
+  const destLabel = def.type === "ktm" ? "Towards" : (note ? def.line.long || def.line.short : "Towards");
   el.innerHTML = `
-    <div class="line-badge" style="background:${def.line.color}">${def.line.short}</div>
+    <div class="line-badge" style="background:${def.line.color}">${badge}</div>
     <div class="dest">
-      <div class="to">${note ? def.line.long || def.line.short : "Towards"}</div>
+      <div class="to">${destLabel}</div>
       <div class="name">${note ? note.title : destName}</div>
-      <div class="sub">${note ? note.sub : def.line.long}${def.line.short === "AGL" && !note ? " · turnback service — verify locally" : ""}</div>
+      <div class="sub">${def.type === "ktm" ? "KTM Komuter · " + def.line.name.replace(" (KTM Komuter)", "") : (note ? note.sub : def.line.long)}</div>
     </div>
-    <div class="times"><div class="next">${note ? "—" : "—"}</div><div class="later"></div></div>`;
+    <div class="times"><div class="next">—</div><div class="later"></div></div>`;
   if (note) el.classList.add("info");
   return el;
 }
@@ -308,8 +525,7 @@ function render() {
   const now = Date.now();
   for (const el of document.querySelectorAll("[data-board]")) {
     const def = el.__def;
-    if (!def) continue;
-    if (el.classList.contains("info")) continue;
+    if (!def || el.classList.contains("info")) continue;
     const next = el.querySelector(".next"), later = el.querySelector(".later");
     const entry = cache[def.id];
     const times = (entry?.times || []).filter((t) => t.getTime() > now);
@@ -356,9 +572,17 @@ function showStation(key) {
   emptyEl.style.display = "none";
   stationEl.style.display = "block";
   document.getElementById("st-name").textContent = st.name;
-  document.getElementById("st-lines").textContent = st.lines.map((l) => l.long || l.short).join(" · ");
+  document.getElementById("st-lines").textContent = st.lines.map((l) => l.long || l.name || l.short).join(" · ");
 
-  const defs = boardDefs(st);
+  const defs = boardDefs(st).map((def) => {
+    if (def.type === "ktm") {
+      // attach the byStop table for this route+dir and the station's own stop ids
+      const l = KTM.lines.find((x) => x.routeId === def.line.routeId && x.dir === def.line.dir);
+      def.ktmByStop = l ? l.byStop : [];
+      def.ktmStopIds = KTM.stations.find((s) => s.key === st.key)?.stopIds || [];
+    }
+    return def;
+  });
   for (const def of defs) {
     const el = boardEl(def);
     el.__def = def;
@@ -423,10 +647,7 @@ function pickStation(st) {
 searchEl.addEventListener("input", () => {
   const q = searchEl.value.trim().toUpperCase();
   if (!q) { renderSuggestions([]); return; }
-  renderSuggestions(
-    STATIONS.filter((s) => s.key.includes(q))
-      .slice(0, 8)
-  );
+  renderSuggestions(STATIONS.filter((s) => s.key.includes(q)).slice(0, 8));
 });
 searchEl.addEventListener("keydown", (e) => {
   const items = [...sugEl.querySelectorAll(".sug")];
@@ -445,17 +666,29 @@ document.addEventListener("click", (e) => {
 setInterval(render, 1000);
 
 (async () => {
-  try {
-    await loadStations();
-  } catch (e) {
-    setStatus(`Could not load station list (${e.message})`, "err");
+  let ktmWarn = "";
+  const [stations] = await Promise.allSettled([loadStations()]);
+  if (stations.status !== "fulfilled") {
+    setStatus(`Could not load station list (${stations.reason?.message || "unknown"})`, "err");
     return;
+  }
+  STATIONS = stations.value;
+  try {
+    KTM = await loadKtm();
+    mergeKtmStations(STATIONS, KTM);
+    applyAliases(STATIONS);
+    // no re-save here: LS_STATIONS holds the raw Rapid KL list only, so a
+    // broken KTM merge can never poison the cache
+  } catch (e) {
+    applyAliases(STATIONS);
+    ktmWarn = ` · KTM unavailable (${e.message})`;
   }
   try { favs = JSON.parse(localStorage.getItem(LS_FAVS) || "[]"); } catch (e) { favs = []; }
   favs = favs.filter((k) => STATIONS.some((s) => s.key === k));
-  if (!favs.length) favs = ["MERDEKA", "PLAZA RAKYAT"];
+  if (!favs.length) favs = ["MERDEKA", "PLAZA RAKYAT", "KL SENTRAL"];
   const hashKey = decodeURIComponent(location.hash.replace(/^#/, "")).toUpperCase();
   showStation(STATIONS.some((s) => s.key === hashKey) ? hashKey : favs[0]);
+  if (ktmWarn) setStatus(`Loaded${ktmWarn}`);
 })();
 </script>
 </body>
